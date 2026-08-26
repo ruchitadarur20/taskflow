@@ -8,6 +8,8 @@ WORKDIR /app
 RUN addgroup --system taskflow && adduser --system --ingroup taskflow taskflow
 
 COPY pyproject.toml ./
+COPY alembic.ini ./
+COPY alembic ./alembic
 COPY app ./app
 
 RUN pip install --no-cache-dir --upgrade pip && \

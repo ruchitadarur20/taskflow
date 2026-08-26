@@ -53,6 +53,7 @@ Out of scope for the first implementation phase:
 ## Documentation Index
 
 - [Architecture](docs/architecture.md)
+- [Authentication](docs/authentication.md)
 - [Database Design](docs/database.md)
 - [Data Model, Auth, RBAC, and API Modules](docs/domain-and-api.md)
 - [Frontend, WebSockets, and Background Jobs](docs/frontend-realtime-jobs.md)

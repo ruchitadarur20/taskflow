@@ -39,6 +39,9 @@ services:
       TASKFLOW_ENV: development
       DATABASE_URL: postgresql+psycopg://taskflow:taskflow_dev_password@postgres:5432/taskflow
       REDIS_URL: redis://redis:6379/0
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Set JWT_SECRET_KEY in your environment or local .env file}
+      ACCESS_TOKEN_EXPIRES_MINUTES: ${ACCESS_TOKEN_EXPIRES_MINUTES:-15}
+      REFRESH_TOKEN_EXPIRES_DAYS: ${REFRESH_TOKEN_EXPIRES_DAYS:-30}
     ports:
       - "8000:8000"
     depends_on:
