@@ -34,7 +34,7 @@ jobs:
         run: pytest
 
   frontend:
-    name: Frontend (type-check, build)
+    name: Frontend (type-check, test, build)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -53,6 +53,9 @@ jobs:
 
       - name: Type check
         run: npx tsc --noEmit
+
+      - name: Unit tests
+        run: npx vitest run
 
       - name: Production build
         run: npx vite build

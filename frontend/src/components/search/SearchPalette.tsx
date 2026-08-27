@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { FolderKanban, ListTodo, Search } from "lucide-react";
 
 import { Overlay } from "../ui/Overlay";
+import { ErrorNotice } from "../data/QueryBoundary";
 import { useWorkspaceSearchIndex } from "../../hooks/useWorkspaceSearchIndex";
 import { useDebounce } from "../../hooks/useDebounce";
 
@@ -16,7 +17,7 @@ export function SearchPalette({
   const [query, setQuery] = useState("");
   const debouncedQuery = useDebounce(query, 150);
   const navigate = useNavigate();
-  const { projects, tasks, isLoading } = useWorkspaceSearchIndex(
+  const { projects, tasks, isLoading, isError, error } = useWorkspaceSearchIndex(
     workspaceId,
     debouncedQuery.trim().length > 0,
   );
@@ -48,6 +49,7 @@ export function SearchPalette({
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search projects and tasks..."
+            aria-label="Search projects and tasks"
             className="flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
           />
           <kbd className="rounded border border-border px-1.5 py-0.5 text-xs text-muted-foreground">
@@ -62,6 +64,14 @@ export function SearchPalette({
             </p>
           ) : isLoading ? (
             <p className="px-2 py-6 text-center text-sm text-muted-foreground">Searching...</p>
+          ) : isError ? (
+            <div className="p-2">
+              <ErrorNotice
+                message={
+                  error instanceof Error ? error.message : "Search results could not be loaded."
+                }
+              />
+            </div>
           ) : !hasResults ? (
             <p className="px-2 py-6 text-center text-sm text-muted-foreground">
               No matches for "{debouncedQuery}".

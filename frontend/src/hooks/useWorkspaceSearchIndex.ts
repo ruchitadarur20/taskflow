@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "../context/AuthContext";
 import { useProjects } from "./useProjects";
 import * as projectsApi from "../api/projects";
+import type { Task } from "../api/projects";
 
 /**
  * Client-side search index for a workspace: its projects (already cached by
@@ -22,12 +23,19 @@ export function useWorkspaceSearchIndex(workspaceId: string | undefined, enabled
     queryKey: ["search-tasks", workspaceId, projectIds],
     queryFn: async () => {
       const token = await getAccessToken();
-      const lists = await Promise.all(
+      const lists = await Promise.allSettled(
         projectIds.map((projectId) =>
           projectsApi.listTasks(token, workspaceId as string, projectId, { limit: 100 }),
         ),
       );
-      return lists.flat();
+      const fulfilled = lists
+        .filter((result): result is PromiseFulfilledResult<Task[]> => result.status === "fulfilled")
+        .flatMap((result) => result.value);
+      const rejected = lists.filter((result) => result.status === "rejected");
+      if (rejected.length === lists.length) {
+        throw rejected[0].reason;
+      }
+      return fulfilled;
     },
     enabled: enabled && Boolean(workspaceId) && projectIds.length > 0,
   });
@@ -36,5 +44,7 @@ export function useWorkspaceSearchIndex(workspaceId: string | undefined, enabled
     projects: projectsQuery.data ?? [],
     tasks: tasksQuery.data ?? [],
     isLoading: projectsQuery.isLoading || tasksQuery.isLoading,
+    isError: projectsQuery.isError || tasksQuery.isError,
+    error: projectsQuery.error ?? tasksQuery.error,
   };
 }

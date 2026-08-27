@@ -4,6 +4,7 @@ import { Bell, BellRing, Check } from "lucide-react";
 import { Menu } from "../ui/Menu";
 import { SkeletonLines } from "../ui/Skeleton";
 import { EmptyState } from "../ui/EmptyState";
+import { ErrorNotice } from "../data/QueryBoundary";
 import { useMarkNotificationRead, useNotifications, useUnreadCount } from "../../hooks/useNotifications";
 import { useRealtimeEvent } from "../../hooks/useRealtimeSubscriptions";
 import { useQueryClient } from "@tanstack/react-query";
@@ -25,7 +26,7 @@ export function NotificationBell() {
   return (
     <Menu
       align="end"
-      className="w-96 max-h-[28rem] overflow-y-auto p-0"
+      className="max-h-[28rem] w-[calc(100vw-2rem)] max-w-sm overflow-y-auto p-0"
       trigger={({ toggle, isOpen }) => (
         <button
           type="button"
@@ -57,6 +58,18 @@ export function NotificationBell() {
       {notificationsQuery.isLoading ? (
         <div className="p-4">
           <SkeletonLines count={4} />
+        </div>
+      ) : null}
+
+      {notificationsQuery.isError ? (
+        <div className="p-3">
+          <ErrorNotice
+            message={
+              notificationsQuery.error instanceof Error
+                ? notificationsQuery.error.message
+                : "Notifications could not be loaded."
+            }
+          />
         </div>
       ) : null}
 
@@ -93,6 +106,11 @@ function NotificationRow({
         type="button"
         onClick={onMarkRead}
         disabled={!isUnread}
+        aria-label={
+          isUnread
+            ? `Mark notification read: ${notification.title}`
+            : `Notification read: ${notification.title}`
+        }
         className="flex w-full items-start gap-2.5 px-3 py-2.5 text-left hover:bg-muted disabled:cursor-default"
       >
         <span
