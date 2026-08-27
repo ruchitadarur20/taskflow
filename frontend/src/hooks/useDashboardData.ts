@@ -3,7 +3,12 @@ import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "../context/AuthContext";
 import { useProjects } from "./useProjects";
 import * as projectsApi from "../api/projects";
-import type { Task } from "../api/projects";
+import type { ActivityEvent, Task } from "../api/projects";
+
+type DashboardAggregate<T> = {
+  items: T[];
+  failedProjectCount: number;
+};
 
 /**
  * The dashboard needs "my tasks across the whole workspace" and "recent
@@ -22,7 +27,7 @@ export function useMyTasksAcrossWorkspace(workspaceId: string | undefined, userI
     queryKey: ["dashboard-my-tasks", workspaceId, userId, projectIds],
     queryFn: async () => {
       const token = await getAccessToken();
-      const lists = await Promise.all(
+      const lists = await Promise.allSettled(
         projectIds.map((projectId) =>
           projectsApi.listTasks(token, workspaceId as string, projectId, {
             assignee_id: userId,
@@ -30,12 +35,25 @@ export function useMyTasksAcrossWorkspace(workspaceId: string | undefined, userI
           }),
         ),
       );
-      return lists.flat();
+      const fulfilled = lists
+        .filter((result): result is PromiseFulfilledResult<Task[]> => result.status === "fulfilled")
+        .flatMap((result) => result.value);
+      const rejected = lists.filter((result) => result.status === "rejected");
+      if (rejected.length === lists.length) {
+        throw rejected[0].reason;
+      }
+      return { items: fulfilled, failedProjectCount: rejected.length } satisfies DashboardAggregate<Task>;
     },
     enabled: Boolean(workspaceId && userId) && projectIds.length > 0,
   });
 
-  return { tasks: tasksQuery.data ?? [], isLoading: projectsQuery.isLoading || tasksQuery.isLoading };
+  return {
+    tasks: tasksQuery.data?.items ?? [],
+    isLoading: projectsQuery.isLoading || tasksQuery.isLoading,
+    isError: projectsQuery.isError || tasksQuery.isError,
+    error: projectsQuery.error ?? tasksQuery.error,
+    failedProjectCount: tasksQuery.data?.failedProjectCount ?? 0,
+  };
 }
 
 export function useRecentActivityAcrossWorkspace(workspaceId: string | undefined) {
@@ -47,20 +65,34 @@ export function useRecentActivityAcrossWorkspace(workspaceId: string | undefined
     queryKey: ["dashboard-activity", workspaceId, projectIds],
     queryFn: async () => {
       const token = await getAccessToken();
-      const lists = await Promise.all(
+      const lists = await Promise.allSettled(
         projectIds.map((projectId) =>
           projectsApi.listActivity(token, workspaceId as string, projectId, { limit: 10 }),
         ),
       );
-      return lists
+      const fulfilled = lists
+        .filter((result): result is PromiseFulfilledResult<ActivityEvent[]> => result.status === "fulfilled")
+        .flatMap((result) => result.value);
+      const rejected = lists.filter((result) => result.status === "rejected");
+      if (rejected.length === lists.length) {
+        throw rejected[0].reason;
+      }
+      const items = fulfilled
         .flat()
         .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
         .slice(0, 12);
+      return { items, failedProjectCount: rejected.length } satisfies DashboardAggregate<ActivityEvent>;
     },
     enabled: Boolean(workspaceId) && projectIds.length > 0,
   });
 
-  return { activity: activityQuery.data ?? [], isLoading: projectsQuery.isLoading || activityQuery.isLoading };
+  return {
+    activity: activityQuery.data?.items ?? [],
+    isLoading: projectsQuery.isLoading || activityQuery.isLoading,
+    isError: projectsQuery.isError || activityQuery.isError,
+    error: projectsQuery.error ?? activityQuery.error,
+    failedProjectCount: activityQuery.data?.failedProjectCount ?? 0,
+  };
 }
 
 export type TaskBuckets = {

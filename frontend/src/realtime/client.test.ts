@@ -39,6 +39,7 @@ class CapturingWebSocket {
 }
 
 beforeEach(() => {
+  vi.useRealTimers();
   CapturingWebSocket.instances = [];
   // @ts-expect-error test-only global shim
   globalThis.WebSocket = CapturingWebSocket;
@@ -112,6 +113,44 @@ describe("RealtimeClient", () => {
       scope: "workspace",
       workspace_id: "workspace-1",
     });
+  });
+
+  it("reports disconnect and restores active subscriptions on reconnect", () => {
+    vi.useFakeTimers();
+    const { client, socket } = connectedClient();
+    const statuses: string[] = [];
+    client.onStatusChange((status) => statuses.push(status));
+    client.subscribeWorkspace("workspace-1");
+    client.subscribeProject("workspace-1", "project-1");
+
+    socket.close();
+
+    expect(statuses).toContain("disconnected");
+    expect(CapturingWebSocket.instances).toHaveLength(1);
+
+    vi.advanceTimersByTime(1000);
+    const reconnectSocket = CapturingWebSocket.instances[1];
+    reconnectSocket.emitOpen();
+
+    expect(statuses).toContain("connected");
+    expect(reconnectSocket.sent.map((raw) => JSON.parse(raw))).toEqual(
+      expect.arrayContaining([
+        {
+          action: "subscribe",
+          scope: "workspace",
+          workspace_id: "workspace-1",
+        },
+        {
+          action: "subscribe",
+          scope: "project",
+          workspace_id: "workspace-1",
+          project_id: "project-1",
+        },
+      ]),
+    );
+
+    client.disconnect();
+    vi.useRealTimers();
   });
 
   it("does not restore a workspace subscription after it is unsubscribed", () => {

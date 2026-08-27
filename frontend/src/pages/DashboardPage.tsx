@@ -1,4 +1,5 @@
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   AlarmClock,
   Bell,
@@ -18,13 +19,13 @@ import {
   useMyTasksAcrossWorkspace,
   useRecentActivityAcrossWorkspace,
 } from "../hooks/useDashboardData";
-import { useWorkspaceChannel } from "../hooks/useRealtimeSubscriptions";
+import { useRealtimeEvent, useWorkspaceChannel } from "../hooks/useRealtimeSubscriptions";
 import { Avatar } from "../components/ui/Avatar";
 import { EmptyState } from "../components/ui/EmptyState";
 import { SkeletonCard, SkeletonLines } from "../components/ui/Skeleton";
 import { TaskRow } from "../components/tasks/TaskRow";
 import { ActivityEntry } from "../components/activity/ActivityEntry";
-import { QueryBoundary } from "../components/data/QueryBoundary";
+import { ErrorNotice, QueryBoundary } from "../components/data/QueryBoundary";
 import { ApiError } from "../api/client";
 import { PermissionDeniedPage } from "./PermissionDeniedPage";
 
@@ -32,12 +33,43 @@ export function DashboardPage() {
   const workspaceId = useWorkspaceId();
   const { user } = useAuth();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   useWorkspaceChannel(workspaceId);
+  useRealtimeEvent(null, (event) => {
+    if (!workspaceId || event.workspace_id !== workspaceId) {
+      return;
+    }
+    if (event.event_type.startsWith("project.")) {
+      void queryClient.invalidateQueries({ queryKey: ["projects", workspaceId] });
+      void queryClient.invalidateQueries({ queryKey: ["dashboard-my-tasks", workspaceId] });
+      void queryClient.invalidateQueries({ queryKey: ["dashboard-activity", workspaceId] });
+    }
+    if (event.event_type.startsWith("task.") || event.event_type.startsWith("comment.")) {
+      void queryClient.invalidateQueries({ queryKey: ["dashboard-my-tasks", workspaceId] });
+      void queryClient.invalidateQueries({ queryKey: ["dashboard-activity", workspaceId] });
+    }
+    if (event.event_type.startsWith("notification.")) {
+      void queryClient.invalidateQueries({ queryKey: ["notifications", workspaceId] });
+      void queryClient.invalidateQueries({ queryKey: ["unread-count", workspaceId] });
+    }
+  });
 
   const workspaceQuery = useWorkspace(workspaceId);
   const projectsQuery = useProjects(workspaceId);
-  const { tasks: myTasks, isLoading: tasksLoading } = useMyTasksAcrossWorkspace(workspaceId, user?.id);
-  const { activity, isLoading: activityLoading } = useRecentActivityAcrossWorkspace(workspaceId);
+  const {
+    tasks: myTasks,
+    isLoading: tasksLoading,
+    isError: tasksError,
+    error: tasksErrorValue,
+    failedProjectCount: failedTaskProjectCount,
+  } = useMyTasksAcrossWorkspace(workspaceId, user?.id);
+  const {
+    activity,
+    isLoading: activityLoading,
+    isError: activityError,
+    error: activityErrorValue,
+    failedProjectCount: failedActivityProjectCount,
+  } = useRecentActivityAcrossWorkspace(workspaceId);
   const notificationsQuery = useNotifications(workspaceId);
   const { byUserId } = useMemberLookup(workspaceId);
   const buckets = bucketTasksByDueDate(myTasks);
@@ -66,6 +98,16 @@ export function DashboardPage() {
         Welcome back{user ? `, ${user.display_name.split(" ")[0]}` : ""}
       </h1>
       <p className="mt-1 text-sm text-muted-foreground">Here's what's happening in your workspace.</p>
+      {failedTaskProjectCount > 0 ? (
+        <div className="mt-4">
+          <ErrorNotice message={`${failedTaskProjectCount} project task list could not be loaded.`} />
+        </div>
+      ) : null}
+      {failedActivityProjectCount > 0 ? (
+        <div className="mt-4">
+          <ErrorNotice message={`${failedActivityProjectCount} project activity feed could not be loaded.`} />
+        </div>
+      ) : null}
 
       <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatCard icon={ListChecks} label="Assigned to me" value={myTasks.length} isLoading={tasksLoading} />
@@ -114,6 +156,8 @@ export function DashboardPage() {
             <TaskGroup
               tasks={buckets.overdue}
               isLoading={tasksLoading}
+              isError={tasksError}
+              error={tasksErrorValue}
               emptyLabel="Nothing overdue. Nice work."
               onOpen={openTask}
               byUserId={byUserId}
@@ -126,6 +170,8 @@ export function DashboardPage() {
             <TaskGroup
               tasks={[...buckets.dueSoon, ...buckets.upcoming].slice(0, 8)}
               isLoading={tasksLoading}
+              isError={tasksError}
+              error={tasksErrorValue}
               emptyLabel="No upcoming tasks assigned to you."
               onOpen={openTask}
               byUserId={byUserId}
@@ -168,6 +214,16 @@ export function DashboardPage() {
                 <div className="p-3">
                   <SkeletonLines count={4} />
                 </div>
+              ) : activityError ? (
+                <div className="p-3">
+                  <ErrorNotice
+                    message={
+                      activityErrorValue instanceof Error
+                        ? activityErrorValue.message
+                        : "Activity could not be loaded."
+                    }
+                  />
+                </div>
               ) : activity.length === 0 ? (
                 <p className="p-3 text-sm text-muted-foreground">No recent activity.</p>
               ) : (
@@ -208,7 +264,11 @@ function StatCard({
   tone?: "default" | "danger";
 }) {
   return (
-    <div className="rounded-lg border border-border bg-card p-4">
+    <div
+      className="rounded-lg border border-border bg-card p-4"
+      role="group"
+      aria-label={`${label}: ${isLoading ? "loading" : value}`}
+    >
       <div className="flex items-center gap-2 text-muted-foreground">
         <Icon className="h-4 w-4" aria-hidden="true" />
         <span className="text-xs font-medium">{label}</span>
@@ -223,6 +283,8 @@ function StatCard({
 function TaskGroup({
   tasks,
   isLoading,
+  isError,
+  error,
   emptyLabel,
   onOpen,
   byUserId,
@@ -230,6 +292,8 @@ function TaskGroup({
 }: {
   tasks: ReturnType<typeof bucketTasksByDueDate>["overdue"];
   isLoading: boolean;
+  isError: boolean;
+  error: unknown;
   emptyLabel: string;
   onOpen: (task: { project_id: string; id: string }) => void;
   byUserId: ReturnType<typeof useMemberLookup>["byUserId"];
@@ -240,6 +304,13 @@ function TaskGroup({
       <div className="rounded-lg border border-border bg-card p-3">
         <SkeletonLines count={3} />
       </div>
+    );
+  }
+  if (isError) {
+    return (
+      <ErrorNotice
+        message={error instanceof Error ? error.message : "Tasks could not be loaded."}
+      />
     );
   }
   if (tasks.length === 0) {
