@@ -142,6 +142,7 @@ export function ProjectPage() {
               projectId={projectId}
               taskId={openTaskId}
               onClose={closeTask}
+              onOpenTask={openTask}
               canEdit={canEdit}
             />
           ) : null}

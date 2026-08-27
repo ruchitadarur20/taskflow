@@ -120,6 +120,7 @@ export function useUpdateTask(workspaceId: string, projectId: string) {
     onSettled: (_data, _error, { taskId }) => {
       void queryClient.invalidateQueries({ queryKey: ["tasks", workspaceId, projectId] });
       void queryClient.invalidateQueries({ queryKey: ["task", workspaceId, projectId, taskId] });
+      void queryClient.invalidateQueries({ queryKey: ["activity", workspaceId, projectId] });
     },
   });
 }
@@ -132,6 +133,7 @@ export function useArchiveTask(workspaceId: string, projectId: string) {
       projectsApi.archiveTask(await getAccessToken(), workspaceId, projectId, taskId),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["tasks", workspaceId, projectId] });
+      void queryClient.invalidateQueries({ queryKey: ["activity", workspaceId, projectId] });
     },
   });
 }
@@ -165,6 +167,7 @@ export function useAddTaskLabel(workspaceId: string, projectId: string, taskId: 
       void queryClient.invalidateQueries({
         queryKey: ["task-labels", workspaceId, projectId, taskId],
       });
+      void queryClient.invalidateQueries({ queryKey: ["activity", workspaceId, projectId] });
     },
   });
 }
@@ -179,6 +182,7 @@ export function useRemoveTaskLabel(workspaceId: string, projectId: string, taskI
       void queryClient.invalidateQueries({
         queryKey: ["task-labels", workspaceId, projectId, taskId],
       });
+      void queryClient.invalidateQueries({ queryKey: ["activity", workspaceId, projectId] });
     },
   });
 }
@@ -218,6 +222,7 @@ export function useAddDependency(workspaceId: string, projectId: string, taskId:
       void queryClient.invalidateQueries({
         queryKey: ["task-dependencies", workspaceId, projectId, taskId],
       });
+      void queryClient.invalidateQueries({ queryKey: ["activity", workspaceId, projectId] });
     },
   });
 }
@@ -251,6 +256,29 @@ export function useCreateComment(workspaceId: string, projectId: string, taskId:
       void queryClient.invalidateQueries({
         queryKey: ["task-comments", workspaceId, projectId, taskId],
       });
+      void queryClient.invalidateQueries({ queryKey: ["activity", workspaceId, projectId] });
+    },
+  });
+}
+
+export function useUpdateComment(workspaceId: string, projectId: string, taskId: string) {
+  const { getAccessToken } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ commentId, body }: { commentId: string; body: string }) =>
+      projectsApi.updateComment(
+        await getAccessToken(),
+        workspaceId,
+        projectId,
+        taskId,
+        commentId,
+        body,
+      ),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: ["task-comments", workspaceId, projectId, taskId],
+      });
+      void queryClient.invalidateQueries({ queryKey: ["activity", workspaceId, projectId] });
     },
   });
 }
@@ -271,6 +299,7 @@ export function useDeleteComment(workspaceId: string, projectId: string, taskId:
       void queryClient.invalidateQueries({
         queryKey: ["task-comments", workspaceId, projectId, taskId],
       });
+      void queryClient.invalidateQueries({ queryKey: ["activity", workspaceId, projectId] });
     },
   });
 }
