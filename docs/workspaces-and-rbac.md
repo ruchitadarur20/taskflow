@@ -1,6 +1,6 @@
 # Workspaces and RBAC
 
-Milestone 5 adds the workspace boundary and workspace-level authorization layer.
+Milestone 4 adds the workspace boundary and workspace-level authorization layer.
 It does not implement projects, tasks, comments, notifications, or project-level permissions.
 
 ## Domain Model

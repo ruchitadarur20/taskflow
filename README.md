@@ -2,7 +2,9 @@
 
 TaskFlow is a production-grade collaborative task management platform for teams that need workspaces, projects, tasks, real-time updates, background processing, and secure role-based access control.
 
-This repository is currently at the foundation milestone only. It contains project scope, architecture, domain design, module boundaries, infrastructure strategy, and the implementation roadmap. Application code, placeholder APIs, database migrations, and feature implementations intentionally come later.
+This repository has implemented the foundation, authentication/session management, workspace/RBAC,
+and core project/task milestones. Later milestones will add real-time updates, background jobs,
+notifications, richer task workflows, and production hardening.
 
 ## Product Goals
 
@@ -55,12 +57,13 @@ Out of scope for the first implementation phase:
 - [Architecture](docs/architecture.md)
 - [Authentication](docs/authentication.md)
 - [Workspaces and RBAC](docs/workspaces-and-rbac.md)
+- [Projects and Tasks](docs/projects-and-tasks.md)
 - [Database Design](docs/database.md)
 - [Data Model, Auth, RBAC, and API Modules](docs/domain-and-api.md)
 - [Frontend, WebSockets, and Background Jobs](docs/frontend-realtime-jobs.md)
 - [Testing, Docker, CI/CD, Security, and Observability](docs/quality-and-operations.md)
 - [Implementation Roadmap](docs/roadmap.md)
 
-## Foundation Milestone Status
+## Milestone Status
 
-Complete for planning and documentation. No business features have been implemented.
+Complete through Milestone 5: projects and tasks.

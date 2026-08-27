@@ -15,6 +15,15 @@ from app.core.settings import get_settings
 from app.db.base import Base
 from app.db.session import get_db
 from app.domains.auth.models import RefreshToken, User  # noqa: F401
+from app.domains.projects.models import (  # noqa: F401  # noqa: F401
+    ActivityEvent,
+    Label,
+    Project,
+    Task,
+    TaskComment,
+    TaskDependency,
+    TaskLabel,
+)
 from app.domains.workspaces.models import Workspace, WorkspaceMember  # noqa: F401
 from app.main import app
 
