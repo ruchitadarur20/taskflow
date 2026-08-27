@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import func, select
@@ -65,6 +66,36 @@ def create_notification(
         data={"type": notification_type, "title": title},
     )
     return notification
+
+
+def has_notified_today(
+    db: Session,
+    *,
+    user_id: uuid.UUID,
+    notification_type: str,
+    task_id: uuid.UUID | None = None,
+    workspace_id: uuid.UUID | None = None,
+    now: datetime | None = None,
+) -> bool:
+    """Idempotency check for once-per-day scheduled notifications.
+
+    Scheduled scan jobs (overdue detection, due-soon reminders, digests) run on
+    a short interval but should only notify a given recipient about a given
+    task/type once per day; this reuses the existing `notifications` table as
+    the source of truth instead of adding job-specific dedupe state.
+    """
+    reference = now or utc_now()
+    start_of_day = datetime(reference.year, reference.month, reference.day, tzinfo=UTC)
+    query = select(func.count()).select_from(Notification).where(
+        Notification.user_id == user_id,
+        Notification.type == notification_type,
+        Notification.created_at >= start_of_day,
+    )
+    if task_id is not None:
+        query = query.where(Notification.task_id == task_id)
+    if workspace_id is not None:
+        query = query.where(Notification.workspace_id == workspace_id)
+    return (db.scalar(query) or 0) > 0
 
 
 def list_notifications(

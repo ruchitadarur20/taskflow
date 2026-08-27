@@ -62,6 +62,72 @@ services:
       retries: 10
       start_period: 5s
 
+  worker:
+    build:
+      context: ./backend
+    command:
+      [
+        "celery",
+        "-A",
+        "app.workers.celery_app",
+        "worker",
+        "--loglevel=info",
+        "-Q",
+        "default,notifications,maintenance",
+        "--concurrency=2",
+      ]
+    environment:
+      TASKFLOW_ENV: development
+      DATABASE_URL: postgresql+psycopg://taskflow:taskflow_dev_password@postgres:5432/taskflow
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Set JWT_SECRET_KEY in your environment or local .env file}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "celery",
+          "-A",
+          "app.workers.celery_app",
+          "inspect",
+          "ping",
+          "--timeout",
+          "5",
+        ]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 10s
+
+  beat:
+    build:
+      context: ./backend
+    command:
+      [
+        "celery",
+        "-A",
+        "app.workers.celery_app",
+        "beat",
+        "--loglevel=info",
+        "--schedule=/tmp/celerybeat-schedule",
+      ]
+    environment:
+      TASKFLOW_ENV: development
+      DATABASE_URL: postgresql+psycopg://taskflow:taskflow_dev_password@postgres:5432/taskflow
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Set JWT_SECRET_KEY in your environment or local .env file}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      worker:
+        condition: service_healthy
+
   frontend:
     build:
       context: ./frontend

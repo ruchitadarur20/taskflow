@@ -17,6 +17,25 @@ class Settings(BaseSettings):
     access_token_expires_minutes: int = 15
     refresh_token_expires_days: int = 30
 
+    # Background jobs (Milestone 7): scheduling intervals are configurable so
+    # deployments can tune cadence without a code change.
+    celery_broker_url: str | None = None
+    celery_result_backend: str | None = None
+    overdue_scan_interval_minutes: int = 15
+    due_soon_reminder_interval_minutes: int = 30
+    due_soon_window_hours: int = 24
+    digest_interval_hours: int = 24
+    session_cleanup_interval_hours: int = 6
+    refresh_token_retention_days: int = 30
+
+    @property
+    def resolved_celery_broker_url(self) -> str:
+        return self.celery_broker_url or self.redis_url
+
+    @property
+    def resolved_celery_result_backend(self) -> str:
+        return self.celery_result_backend or self.redis_url
+
     @field_validator("jwt_secret_key")
     @classmethod
     def reject_placeholder_secret(cls, value: str) -> str:

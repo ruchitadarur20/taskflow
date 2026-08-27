@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
 from app.core.settings import Settings
@@ -204,3 +204,27 @@ def logout(db: Session, token: str) -> None:
         record.revoked_at = utc_now()
         record.revocation_reason = RefreshTokenRevocationReason.logout
         db.commit()
+
+
+def cleanup_expired_refresh_tokens(
+    db: Session, *, retention_days: int, now: datetime | None = None
+) -> int:
+    """Hard-delete refresh tokens that expired more than `retention_days` ago.
+
+    Revoked-but-not-yet-expired tokens are kept (rotation/reuse detection needs
+    them); only tokens past their retention window are removed, regardless of
+    revocation state. Used by the scheduled `cleanup_expired_sessions` job.
+    """
+    reference = now or utc_now()
+    cutoff = reference - timedelta(days=retention_days)
+    # synchronize_session=False: this is a pure maintenance sweep, nothing in
+    # the current session needs to stay in sync with rows it deletes, and
+    # letting SQLAlchemy evaluate the WHERE clause against already-loaded
+    # in-memory objects can crash comparing aware vs. naive datetimes (SQLite
+    # does not round-trip tzinfo, unlike Postgres).
+    result = db.execute(
+        delete(RefreshToken).where(RefreshToken.expires_at < cutoff),
+        execution_options={"synchronize_session": False},
+    )
+    db.commit()
+    return result.rowcount or 0  # type: ignore[attr-defined]
