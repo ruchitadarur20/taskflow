@@ -149,6 +149,12 @@ function task(overrides: Partial<Task>): Task {
   };
 }
 
+function toLocalInputValue(iso: string): string {
+  const date = new Date(iso);
+  const offset = date.getTimezoneOffset();
+  return new Date(date.getTime() - offset * 60000).toISOString().slice(0, 16);
+}
+
 function parseBody(init?: RequestInit): Record<string, unknown> {
   return init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
 }
@@ -363,7 +369,9 @@ describe("Kanban board and task details", () => {
     expect(within(drawer).getByLabelText("Task status")).toHaveValue("todo");
     expect(within(drawer).getByLabelText("Task priority")).toHaveValue("high");
     expect(within(drawer).getByLabelText("Task assignee")).toHaveValue(ASSIGNEE.user_id);
-    expect(within(drawer).getByLabelText("Task due date")).toHaveValue("2026-09-03T11:30");
+    expect(within(drawer).getByLabelText("Task due date")).toHaveValue(
+      toLocalInputValue("2026-09-03T15:30:00.000Z"),
+    );
 
     await userEvent.click(within(drawer).getByRole("button", { name: "Close panel" }));
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Edit task" })).not.toBeInTheDocument());
