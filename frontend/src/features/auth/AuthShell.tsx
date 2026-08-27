@@ -15,6 +15,7 @@ import {
   loadSession,
   saveSession,
 } from "./sessionStorage";
+import { WorkspaceShell } from "../workspaces/WorkspaceShell";
 
 type Mode = "login" | "register";
 
@@ -124,6 +125,7 @@ export function AuthShell() {
           <h2>{user.display_name}</h2>
           <p>{user.email}</p>
         </section>
+        {session ? <WorkspaceShell session={session} /> : null}
       </main>
     );
   }

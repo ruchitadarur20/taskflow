@@ -54,6 +54,7 @@ Out of scope for the first implementation phase:
 
 - [Architecture](docs/architecture.md)
 - [Authentication](docs/authentication.md)
+- [Workspaces and RBAC](docs/workspaces-and-rbac.md)
 - [Database Design](docs/database.md)
 - [Data Model, Auth, RBAC, and API Modules](docs/domain-and-api.md)
 - [Frontend, WebSockets, and Background Jobs](docs/frontend-realtime-jobs.md)
