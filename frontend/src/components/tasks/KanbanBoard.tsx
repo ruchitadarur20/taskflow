@@ -4,12 +4,17 @@ import {
   DragEndEvent,
   DragOverlay,
   DragStartEvent,
+  KeyboardSensor,
   PointerSensor,
   useDroppable,
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
-import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
 
 import { TaskCard } from "./TaskCard";
 import { EmptyState } from "../ui/EmptyState";
@@ -46,7 +51,10 @@ export function KanbanBoard({
   const updateTask = useUpdateTask(workspaceId, projectId);
   const { toast } = useToast();
   const [activeTask, setActiveTask] = useState<Task | null>(null);
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
 
   const columns = TASK_STATUSES.map((status) => ({
     status,
@@ -87,9 +95,18 @@ export function KanbanBoard({
     return (
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {columns.map((column) => (
-          <div key={column.status} className="rounded-lg bg-muted/40 p-3">
+          <div
+            key={column.status}
+            className="rounded-lg bg-muted/40 p-3"
+            aria-label={`${COLUMN_TITLES[column.status]} column`}
+          >
             <ColumnHeader status={column.status} count={column.tasks.length} />
             <div className="grid gap-2">
+              {column.tasks.length === 0 ? (
+                <p className="rounded-md border border-dashed border-border p-4 text-center text-xs text-muted-foreground">
+                  No tasks
+                </p>
+              ) : null}
               {column.tasks.map((task) => (
                 <TaskCardStatic
                   key={task.id}
@@ -159,6 +176,7 @@ function KanbanColumn({
     <div
       ref={setNodeRef}
       className={`flex min-h-40 flex-col rounded-lg p-3 transition-colors ${isOver ? "bg-primary/10" : "bg-muted/40"}`}
+      aria-label={`${COLUMN_TITLES[status]} column`}
     >
       <ColumnHeader status={status} count={tasks.length} />
       <SortableContext items={tasks.map((task) => task.id)} strategy={verticalListSortingStrategy}>
@@ -195,6 +213,7 @@ function TaskCardStatic({
     <button
       type="button"
       onClick={onClick}
+      aria-label={`Open task ${task.title}`}
       className="rounded-lg border border-border bg-card p-3 text-left shadow-sm"
     >
       <p className="text-sm font-medium text-foreground">{task.title}</p>

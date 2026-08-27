@@ -29,6 +29,7 @@ export function TaskCard({
       <button
         type="button"
         onClick={onClick}
+        aria-label={`Open task ${task.title}`}
         {...attributes}
         {...listeners}
         className="w-full cursor-grab text-left active:cursor-grabbing"
