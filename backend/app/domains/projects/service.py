@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.domains.auth.models import User
 from app.domains.auth.security import utc_now
+from app.domains.notifications.service import create_notification
 from app.domains.projects.models import (
     ActivityEvent,
     Label,
@@ -25,6 +26,7 @@ from app.domains.projects.models import (
 from app.domains.workspaces.models import WorkspaceMember
 from app.domains.workspaces.policies import WorkspaceAction, can
 from app.domains.workspaces.service import require_permission
+from app.realtime.events import queue_workspace_event
 
 
 class ProjectError(Exception):
@@ -105,6 +107,7 @@ def record_activity(
     task_id: uuid.UUID | None = None,
     metadata: dict[str, Any] | None = None,
 ) -> None:
+    occurred_at = utc_now()
     db.add(
         ActivityEvent(
             workspace_id=workspace_id,
@@ -113,8 +116,18 @@ def record_activity(
             actor_id=actor_id,
             event_type=event_type,
             metadata_json=metadata or {},
-            created_at=utc_now(),
+            created_at=occurred_at,
         )
+    )
+    queue_workspace_event(
+        db,
+        workspace_id=workspace_id,
+        event_type=event_type,
+        project_id=project_id,
+        task_id=task_id,
+        actor_id=actor_id,
+        occurred_at=occurred_at,
+        metadata=metadata or {},
     )
 
 
@@ -431,6 +444,33 @@ def update_task(
             event_type=event_type,
             metadata=changes,
         )
+        new_assignee_id = task.assignee_id
+        assignee_notifiable = new_assignee_id is not None and new_assignee_id != actor.id
+        if "assignee_id" in changes and assignee_notifiable:
+            assert new_assignee_id is not None
+            create_notification(
+                db,
+                user_id=new_assignee_id,
+                workspace_id=workspace_id,
+                notification_type="task.assignee_changed",
+                title=f"You were assigned to {task.title}",
+                project_id=project_id,
+                task_id=task.id,
+                actor_id=actor.id,
+            )
+        elif "status" in changes and assignee_notifiable:
+            assert new_assignee_id is not None
+            create_notification(
+                db,
+                user_id=new_assignee_id,
+                workspace_id=workspace_id,
+                notification_type="task.status_changed",
+                title=f"Task status changed: {task.title}",
+                body=str(task.status),
+                project_id=project_id,
+                task_id=task.id,
+                actor_id=actor.id,
+            )
     db.commit()
     db.refresh(task)
     return task
@@ -654,7 +694,7 @@ def create_comment(
     body: str,
 ) -> TaskComment:
     require_write_membership(db, workspace_id, actor)
-    get_task(db, workspace_id, project_id, task_id)
+    task = get_task(db, workspace_id, project_id, task_id)
     now = utc_now()
     comment = TaskComment(
         workspace_id=workspace_id,
@@ -674,6 +714,20 @@ def create_comment(
         actor_id=actor.id,
         event_type="task.comment_added",
     )
+    notify_ids = {task.assignee_id, task.created_by_id} - {None, actor.id}
+    for recipient_id in notify_ids:
+        assert recipient_id is not None
+        create_notification(
+            db,
+            user_id=recipient_id,
+            workspace_id=workspace_id,
+            notification_type="comment.created",
+            title=f"New comment on {task.title}",
+            body=body,
+            project_id=project_id,
+            task_id=task_id,
+            actor_id=actor.id,
+        )
     db.commit()
     db.refresh(comment)
     return comment

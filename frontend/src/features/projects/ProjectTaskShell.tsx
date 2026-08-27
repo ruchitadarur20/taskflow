@@ -21,15 +21,17 @@ import {
 } from "../../api/projects";
 import { Workspace, WorkspaceMember, getWorkspaceMembers, listWorkspaces } from "../../api/workspaces";
 import type { StoredSession } from "../auth/sessionStorage";
+import type { RealtimeClient } from "../../realtime/client";
 
 type ProjectTaskShellProps = {
   session: StoredSession;
+  client: RealtimeClient;
 };
 
 const statusOptions: TaskStatus[] = ["todo", "in_progress", "blocked", "done"];
 const priorityOptions: TaskPriority[] = ["low", "medium", "high", "urgent"];
 
-export function ProjectTaskShell({ session }: ProjectTaskShellProps) {
+export function ProjectTaskShell({ session, client }: ProjectTaskShellProps) {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [workspaceId, setWorkspaceId] = useState("");
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
@@ -202,6 +204,75 @@ export function ProjectTaskShell({ session }: ProjectTaskShellProps) {
       isMounted = false;
     };
   }, [workspaceId, projectId, selectedTaskId, session]);
+
+  // Realtime: stay subscribed to the selected workspace, and to the selected
+  // project while one is open (re-subscribing whenever either changes).
+  useEffect(() => {
+    if (!workspaceId) {
+      return;
+    }
+    client.subscribeWorkspace(workspaceId);
+  }, [client, workspaceId]);
+
+  useEffect(() => {
+    if (!workspaceId || !projectId) {
+      return;
+    }
+    client.subscribeProject(workspaceId, projectId);
+    return () => {
+      client.unsubscribeProject(workspaceId, projectId);
+    };
+  }, [client, workspaceId, projectId]);
+
+  // Realtime: react to server-pushed events by refetching the affected list
+  // through the same REST endpoints used for the initial load, rather than
+  // trying to hand-merge partial event payloads into local state.
+  useEffect(() => {
+    if (!workspaceId) {
+      return;
+    }
+    const unsubscribe = client.onEvent((event) => {
+      if (event.workspace_id !== workspaceId) {
+        return;
+      }
+
+      if (event.event_type.startsWith("project.")) {
+        void listProjects(session, workspaceId)
+          .then(setProjects)
+          .catch(() => undefined);
+        return;
+      }
+
+      if (!projectId || event.project_id !== projectId) {
+        return;
+      }
+
+      if (event.event_type.startsWith("task.")) {
+        void listTasks(session, workspaceId, projectId)
+          .then(setTasks)
+          .catch(() => undefined);
+        if (event.event_type === "task.label_added" || event.event_type === "task.label_removed") {
+          void listLabels(session, workspaceId, projectId)
+            .then(setLabels)
+            .catch(() => undefined);
+        }
+      }
+
+      if (selectedTaskId && event.task_id === selectedTaskId) {
+        if (event.event_type === "comment.created") {
+          void listComments(session, workspaceId, projectId, selectedTaskId)
+            .then(setComments)
+            .catch(() => undefined);
+        }
+        if (event.event_type === "task.label_added" || event.event_type === "task.label_removed") {
+          void listTaskLabels(session, workspaceId, projectId, selectedTaskId)
+            .then(setTaskLabels)
+            .catch(() => undefined);
+        }
+      }
+    });
+    return unsubscribe;
+  }, [client, session, workspaceId, projectId, selectedTaskId]);
 
   async function handleProjectCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

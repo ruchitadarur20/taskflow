@@ -15,8 +15,10 @@ import {
   loadSession,
   saveSession,
 } from "./sessionStorage";
+import { NotificationBell } from "../notifications/NotificationBell";
 import { ProjectTaskShell } from "../projects/ProjectTaskShell";
 import { WorkspaceShell } from "../workspaces/WorkspaceShell";
+import { RealtimeClient } from "../../realtime/client";
 
 type Mode = "login" | "register";
 
@@ -29,6 +31,20 @@ export function AuthShell() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(Boolean(session));
+  const [realtimeClient, setRealtimeClient] = useState<RealtimeClient | null>(null);
+
+  useEffect(() => {
+    if (!session) {
+      setRealtimeClient(null);
+      return;
+    }
+    const client = new RealtimeClient(session.accessToken);
+    client.connect();
+    setRealtimeClient(client);
+    return () => {
+      client.disconnect();
+    };
+  }, [session?.accessToken]);
 
   useEffect(() => {
     let isMounted = true;
@@ -117,19 +133,24 @@ export function AuthShell() {
             <p className="eyebrow">TaskFlow</p>
             <h1>Authenticated Session</h1>
           </div>
-          <button type="button" onClick={handleLogout}>
-            Log out
-          </button>
+          <div className="topbar-actions">
+            {session && realtimeClient ? (
+              <NotificationBell session={session} client={realtimeClient} />
+            ) : null}
+            <button type="button" onClick={handleLogout}>
+              Log out
+            </button>
+          </div>
         </header>
         <section className="session-panel">
           <p className="muted">Signed in as</p>
           <h2>{user.display_name}</h2>
           <p>{user.email}</p>
         </section>
-        {session ? (
+        {session && realtimeClient ? (
           <>
             <WorkspaceShell session={session} />
-            <ProjectTaskShell session={session} />
+            <ProjectTaskShell session={session} client={realtimeClient} />
           </>
         ) : null}
       </main>
