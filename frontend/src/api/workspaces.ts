@@ -1,6 +1,5 @@
-import type { StoredSession } from "../features/auth/sessionStorage";
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
+import { apiRequest } from "./client";
+import type { AuthUser } from "./auth";
 
 export type WorkspaceRole = "owner" | "admin" | "member" | "viewer";
 
@@ -23,55 +22,70 @@ export type WorkspaceMember = {
   role: WorkspaceRole;
   created_at: string;
   updated_at: string;
-  user: {
-    id: string;
-    email: string;
-    display_name: string;
-    created_at: string;
-  };
+  user: AuthUser;
 };
 
-async function parseResponse<T>(response: Response): Promise<T> {
-  if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as { detail?: string } | null;
-    throw new Error(body?.detail ?? "Workspace request failed");
-  }
-  if (response.status === 204) {
-    return undefined as T;
-  }
-  return (await response.json()) as T;
+export function listWorkspaces(token: string): Promise<Workspace[]> {
+  return apiRequest<Workspace[]>("/workspaces", { token });
 }
 
-function headers(session: StoredSession): HeadersInit {
-  return {
-    Authorization: `Bearer ${session.accessToken}`,
-    "Content-Type": "application/json",
-  };
+export function createWorkspace(token: string, name: string): Promise<Workspace> {
+  return apiRequest<Workspace>("/workspaces", { method: "POST", token, body: { name } });
 }
 
-export async function listWorkspaces(session: StoredSession): Promise<Workspace[]> {
-  const response = await fetch(`${API_BASE_URL}/workspaces`, { headers: headers(session) });
-  return parseResponse<Workspace[]>(response);
+export function getWorkspace(token: string, workspaceId: string): Promise<Workspace> {
+  return apiRequest<Workspace>(`/workspaces/${workspaceId}`, { token });
 }
 
-export async function createWorkspace(
-  session: StoredSession,
+export function updateWorkspace(
+  token: string,
+  workspaceId: string,
   name: string,
 ): Promise<Workspace> {
-  const response = await fetch(`${API_BASE_URL}/workspaces`, {
-    method: "POST",
-    headers: headers(session),
-    body: JSON.stringify({ name }),
+  return apiRequest<Workspace>(`/workspaces/${workspaceId}`, {
+    method: "PATCH",
+    token,
+    body: { name },
   });
-  return parseResponse<Workspace>(response);
 }
 
-export async function getWorkspaceMembers(
-  session: StoredSession,
+export function archiveWorkspace(token: string, workspaceId: string): Promise<void> {
+  return apiRequest<void>(`/workspaces/${workspaceId}`, { method: "DELETE", token });
+}
+
+export function listMembers(token: string, workspaceId: string): Promise<WorkspaceMember[]> {
+  return apiRequest<WorkspaceMember[]>(`/workspaces/${workspaceId}/members`, { token });
+}
+
+export function addMember(
+  token: string,
   workspaceId: string,
-): Promise<WorkspaceMember[]> {
-  const response = await fetch(`${API_BASE_URL}/workspaces/${workspaceId}/members`, {
-    headers: headers(session),
+  email: string,
+  role: WorkspaceRole,
+): Promise<WorkspaceMember> {
+  return apiRequest<WorkspaceMember>(`/workspaces/${workspaceId}/members`, {
+    method: "POST",
+    token,
+    body: { email, role },
   });
-  return parseResponse<WorkspaceMember[]>(response);
+}
+
+export function changeMemberRole(
+  token: string,
+  workspaceId: string,
+  userId: string,
+  role: WorkspaceRole,
+): Promise<WorkspaceMember> {
+  return apiRequest<WorkspaceMember>(`/workspaces/${workspaceId}/members/${userId}`, {
+    method: "PATCH",
+    token,
+    body: { role },
+  });
+}
+
+export function removeMember(token: string, workspaceId: string, userId: string): Promise<void> {
+  return apiRequest<void>(`/workspaces/${workspaceId}/members/${userId}`, {
+    method: "DELETE",
+    token,
+  });
 }

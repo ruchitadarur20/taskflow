@@ -1,4 +1,4 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
+import { apiRequest } from "./client";
 
 export type AuthUser = {
   id: string;
@@ -24,52 +24,28 @@ export type RegisterInput = LoginInput & {
   display_name: string;
 };
 
-async function parseResponse<T>(response: Response): Promise<T> {
-  if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as { detail?: string } | null;
-    throw new Error(body?.detail ?? "Authentication request failed");
-  }
-  return (await response.json()) as T;
+export function login(input: LoginInput): Promise<AuthTokens> {
+  return apiRequest<AuthTokens>("/auth/login", { method: "POST", body: input });
 }
 
-export async function login(input: LoginInput): Promise<AuthTokens> {
-  const response = await fetch(`${API_BASE_URL}/auth/login`, {
+export function register(input: RegisterInput): Promise<AuthTokens> {
+  return apiRequest<AuthTokens>("/auth/register", { method: "POST", body: input });
+}
+
+export function refreshSession(refreshToken: string): Promise<AuthTokens> {
+  return apiRequest<AuthTokens>("/auth/refresh", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
+    body: { refresh_token: refreshToken },
   });
-  return parseResponse<AuthTokens>(response);
 }
 
-export async function register(input: RegisterInput): Promise<AuthTokens> {
-  const response = await fetch(`${API_BASE_URL}/auth/register`, {
+export function logout(refreshToken: string): Promise<void> {
+  return apiRequest<void>("/auth/logout", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
-  });
-  return parseResponse<AuthTokens>(response);
+    body: { refresh_token: refreshToken },
+  }).catch(() => undefined);
 }
 
-export async function refreshSession(refreshToken: string): Promise<AuthTokens> {
-  const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ refresh_token: refreshToken }),
-  });
-  return parseResponse<AuthTokens>(response);
-}
-
-export async function logout(refreshToken: string): Promise<void> {
-  await fetch(`${API_BASE_URL}/auth/logout`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ refresh_token: refreshToken }),
-  });
-}
-
-export async function getCurrentUser(accessToken: string): Promise<AuthUser> {
-  const response = await fetch(`${API_BASE_URL}/auth/me`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-  return parseResponse<AuthUser>(response);
+export function getCurrentUser(token: string): Promise<AuthUser> {
+  return apiRequest<AuthUser>("/auth/me", { token });
 }

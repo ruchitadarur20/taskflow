@@ -1,4 +1,4 @@
-import type { AuthTokens } from "../../api/auth";
+import type { AuthTokens } from "../api/auth";
 
 const ACCESS_TOKEN_KEY = "taskflow.accessToken";
 const REFRESH_TOKEN_KEY = "taskflow.refreshToken";

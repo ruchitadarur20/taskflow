@@ -1,0 +1,121 @@
+@import "tailwindcss";
+
+/* Class-based dark mode: toggled on <html> by ThemeContext, independent of
+   the OS preference so users can explicitly pick light/dark/system. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --background: 250 251 252;
+  --foreground: 15 23 32;
+  --card: 255 255 255;
+  --card-foreground: 15 23 32;
+  --muted: 241 245 247;
+  --muted-foreground: 100 117 122;
+  --border: 222 229 232;
+  --input: 222 229 232;
+  --ring: 18 110 106;
+  --primary: 18 110 106;
+  --primary-foreground: 255 255 255;
+  --accent: 197 87 43;
+  --accent-foreground: 255 255 255;
+  --danger: 185 44 34;
+  --danger-foreground: 255 255 255;
+  --success: 31 157 99;
+  --warning: 197 135 43;
+  --sidebar: 244 246 247;
+  --sidebar-foreground: 30 41 48;
+}
+
+.dark {
+  --background: 13 17 22;
+  --foreground: 226 232 235;
+  --card: 20 26 33;
+  --card-foreground: 226 232 235;
+  --muted: 26 33 41;
+  --muted-foreground: 148 163 170;
+  --border: 39 48 58;
+  --input: 39 48 58;
+  --ring: 66 190 178;
+  --primary: 66 190 178;
+  --primary-foreground: 8 20 19;
+  --accent: 224 130 88;
+  --accent-foreground: 20 12 8;
+  --danger: 224 100 90;
+  --danger-foreground: 24 8 6;
+  --success: 74 201 145;
+  --warning: 224 176 92;
+  --sidebar: 17 22 28;
+  --sidebar-foreground: 214 222 226;
+}
+
+@theme inline {
+  --color-background: rgb(var(--background));
+  --color-foreground: rgb(var(--foreground));
+  --color-card: rgb(var(--card));
+  --color-card-foreground: rgb(var(--card-foreground));
+  --color-muted: rgb(var(--muted));
+  --color-muted-foreground: rgb(var(--muted-foreground));
+  --color-border: rgb(var(--border));
+  --color-input: rgb(var(--input));
+  --color-ring: rgb(var(--ring));
+  --color-primary: rgb(var(--primary));
+  --color-primary-foreground: rgb(var(--primary-foreground));
+  --color-accent: rgb(var(--accent));
+  --color-accent-foreground: rgb(var(--accent-foreground));
+  --color-danger: rgb(var(--danger));
+  --color-danger-foreground: rgb(var(--danger-foreground));
+  --color-success: rgb(var(--success));
+  --color-warning: rgb(var(--warning));
+  --color-sidebar: rgb(var(--sidebar));
+  --color-sidebar-foreground: rgb(var(--sidebar-foreground));
+  --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: rgb(var(--background));
+  color: rgb(var(--foreground));
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  border-color: rgb(var(--border));
+}
+
+/* Visible, consistent focus ring everywhere instead of relying on each
+   component to remember to add one - keyboard navigation depends on this. */
+:focus-visible {
+  outline: 2px solid rgb(var(--ring));
+  outline-offset: 2px;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--border));
+  border-radius: 999px;
+}
+
+@keyframes taskflow-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-toast-in {
+  animation: taskflow-toast-in 0.18s ease-out;
+}

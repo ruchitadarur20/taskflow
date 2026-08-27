@@ -1,6 +1,4 @@
-import type { StoredSession } from "../features/auth/sessionStorage";
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
+import { apiRequest } from "./client";
 
 export type Notification = {
   id: string;
@@ -16,58 +14,27 @@ export type Notification = {
   created_at: string;
 };
 
-async function parseResponse<T>(response: Response): Promise<T> {
-  if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as { detail?: string } | null;
-    throw new Error(body?.detail ?? "Notification request failed");
-  }
-  return (await response.json()) as T;
-}
-
-function headers(session: StoredSession): HeadersInit {
-  return {
-    Authorization: `Bearer ${session.accessToken}`,
-    "Content-Type": "application/json",
-  };
-}
-
-export async function listNotifications(
-  session: StoredSession,
+export function listNotifications(
+  token: string,
   options: { workspaceId?: string; unreadOnly?: boolean } = {},
 ): Promise<Notification[]> {
-  const params = new URLSearchParams();
-  if (options.workspaceId) {
-    params.set("workspace_id", options.workspaceId);
-  }
-  if (options.unreadOnly) {
-    params.set("unread_only", "true");
-  }
-  const query = params.toString();
-  const response = await fetch(`${API_BASE_URL}/notifications${query ? `?${query}` : ""}`, {
-    headers: headers(session),
+  return apiRequest<Notification[]>("/notifications", {
+    token,
+    query: { workspace_id: options.workspaceId, unread_only: options.unreadOnly },
   });
-  return parseResponse<Notification[]>(response);
 }
 
-export async function getUnreadCount(
-  session: StoredSession,
-  workspaceId?: string,
-): Promise<number> {
-  const query = workspaceId ? `?workspace_id=${workspaceId}` : "";
-  const response = await fetch(`${API_BASE_URL}/notifications/unread-count${query}`, {
-    headers: headers(session),
+export async function getUnreadCount(token: string, workspaceId?: string): Promise<number> {
+  const body = await apiRequest<{ unread_count: number }>("/notifications/unread-count", {
+    token,
+    query: { workspace_id: workspaceId },
   });
-  const body = await parseResponse<{ unread_count: number }>(response);
   return body.unread_count;
 }
 
-export async function markNotificationRead(
-  session: StoredSession,
-  notificationId: string,
-): Promise<Notification> {
-  const response = await fetch(`${API_BASE_URL}/notifications/${notificationId}/read`, {
+export function markNotificationRead(token: string, notificationId: string): Promise<Notification> {
+  return apiRequest<Notification>(`/notifications/${notificationId}/read`, {
     method: "POST",
-    headers: headers(session),
+    token,
   });
-  return parseResponse<Notification>(response);
 }
