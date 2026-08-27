@@ -45,6 +45,10 @@ type SubscribeMessage = {
   workspace_id: string;
   project_id?: string;
 };
+type ActiveSubscription = {
+  message: SubscribeMessage;
+  subscribers: number;
+};
 
 /**
  * Authenticated realtime client: one WebSocket per session, reconnecting with
@@ -59,7 +63,7 @@ export class RealtimeClient {
   private reconnectAttempt = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private status: ConnectionStatus = "connecting";
-  private activeSubscriptions = new Map<string, SubscribeMessage>();
+  private activeSubscriptions = new Map<string, ActiveSubscription>();
   private eventListeners = new Set<EventListener>();
   private statusListeners = new Set<StatusListener>();
   private seenEventIds: string[] = [];
@@ -88,6 +92,14 @@ export class RealtimeClient {
     this.subscribe({ action: "subscribe", scope: "workspace", workspace_id: workspaceId });
   }
 
+  unsubscribeWorkspace(workspaceId: string): void {
+    this.unsubscribe({
+      action: "unsubscribe",
+      scope: "workspace",
+      workspace_id: workspaceId,
+    });
+  }
+
   subscribeProject(workspaceId: string, projectId: string): void {
     this.subscribe({
       action: "subscribe",
@@ -98,9 +110,7 @@ export class RealtimeClient {
   }
 
   unsubscribeProject(workspaceId: string, projectId: string): void {
-    const key = subscriptionKey("project", workspaceId, projectId);
-    this.activeSubscriptions.delete(key);
-    this.send({
+    this.unsubscribe({
       action: "unsubscribe",
       scope: "project",
       workspace_id: workspaceId,
@@ -121,7 +131,26 @@ export class RealtimeClient {
 
   private subscribe(message: SubscribeMessage): void {
     const key = subscriptionKey(message.scope, message.workspace_id, message.project_id);
-    this.activeSubscriptions.set(key, message);
+    const current = this.activeSubscriptions.get(key);
+    if (current) {
+      current.subscribers += 1;
+      return;
+    }
+    this.activeSubscriptions.set(key, { message, subscribers: 1 });
+    this.send(message);
+  }
+
+  private unsubscribe(message: SubscribeMessage): void {
+    const key = subscriptionKey(message.scope, message.workspace_id, message.project_id);
+    const current = this.activeSubscriptions.get(key);
+    if (!current) {
+      return;
+    }
+    if (current.subscribers > 1) {
+      current.subscribers -= 1;
+      return;
+    }
+    this.activeSubscriptions.delete(key);
     this.send(message);
   }
 
@@ -177,7 +206,7 @@ export class RealtimeClient {
       // Resubscribe every active channel after every (re)connect - covers both
       // the first connection and every reconnect after a dropped socket.
       for (const subscription of this.activeSubscriptions.values()) {
-        this.send(subscription);
+        this.send(subscription.message);
       }
       return;
     }
