@@ -52,8 +52,13 @@ export function useCreateTask(workspaceId: string, projectId: string) {
   return useMutation({
     mutationFn: async (input: Parameters<typeof projectsApi.createTask>[3]) =>
       projectsApi.createTask(await getAccessToken(), workspaceId, projectId, input),
-    onSuccess: () => {
+    onSuccess: (task) => {
+      queryClient.setQueriesData<Task[]>(
+        { queryKey: ["tasks", workspaceId, projectId] },
+        (current) => (current ? [...current, task] : current),
+      );
       void queryClient.invalidateQueries({ queryKey: ["tasks", workspaceId, projectId] });
+      void queryClient.invalidateQueries({ queryKey: ["activity", workspaceId, projectId] });
     },
   });
 }

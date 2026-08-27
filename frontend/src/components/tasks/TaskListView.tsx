@@ -23,6 +23,7 @@ export function TaskListView({
   byUserId: Map<string, WorkspaceMember>;
   onOpenTask: (taskId: string) => void;
 }) {
+  const hasTasks = tasks.length > 0;
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<TaskStatus | "">("");
   const [assigneeFilter, setAssigneeFilter] = useState("");
@@ -104,7 +105,11 @@ export function TaskListView({
       </div>
 
       {sorted.length === 0 ? (
-        <EmptyState icon={ListTodo} title="No matching tasks" description="Try adjusting your filters." />
+        hasTasks ? (
+          <EmptyState icon={ListTodo} title="No matching tasks" description="Try adjusting your filters." />
+        ) : (
+          <EmptyState icon={ListTodo} title="No tasks yet" description="Create the first task for this project." />
+        )
       ) : (
         <div className="overflow-x-auto rounded-lg border border-border">
           <table className="w-full min-w-[640px] text-sm">

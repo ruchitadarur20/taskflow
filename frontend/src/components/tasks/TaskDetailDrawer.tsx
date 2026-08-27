@@ -30,7 +30,7 @@ import {
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
 import { TASK_PRIORITIES, TASK_STATUSES } from "../../api/projects";
-import type { TaskPriority, TaskStatus } from "../../api/projects";
+import type { TaskCoreUpdateInput, TaskPriority, TaskStatus } from "../../api/projects";
 
 export function TaskDetailDrawer({
   workspaceId,
@@ -82,10 +82,10 @@ export function TaskDetailDrawer({
 
   function commitField<K extends "status" | "priority" | "assignee_id" | "due_at">(
     field: K,
-    value: string,
+    value: NonNullable<TaskCoreUpdateInput[K]> | "",
   ) {
     updateTask.mutate(
-      { taskId, input: { [field]: value === "" ? null : value } as Record<string, unknown> },
+      { taskId, input: { [field]: value === "" ? null : value } as Pick<TaskCoreUpdateInput, K> },
       {
         onError: (error) => {
           toast({
@@ -141,9 +141,10 @@ export function TaskDetailDrawer({
         <div className="grid grid-cols-2 gap-3">
           <FieldBlock label="Status">
             <Select
+              aria-label="Task status"
               value={task.status}
               disabled={!canEdit}
-              onChange={(event) => commitField("status", event.target.value)}
+              onChange={(event) => commitField("status", event.target.value as TaskStatus)}
             >
               {TASK_STATUSES.map((status: TaskStatus) => (
                 <option key={status} value={status}>
@@ -154,9 +155,10 @@ export function TaskDetailDrawer({
           </FieldBlock>
           <FieldBlock label="Priority">
             <Select
+              aria-label="Task priority"
               value={task.priority}
               disabled={!canEdit}
-              onChange={(event) => commitField("priority", event.target.value)}
+              onChange={(event) => commitField("priority", event.target.value as TaskPriority)}
             >
               {TASK_PRIORITIES.map((priority: TaskPriority) => (
                 <option key={priority} value={priority}>
@@ -167,6 +169,7 @@ export function TaskDetailDrawer({
           </FieldBlock>
           <FieldBlock label="Assignee">
             <Select
+              aria-label="Task assignee"
               value={task.assignee_id ?? ""}
               disabled={!canEdit}
               onChange={(event) => commitField("assignee_id", event.target.value)}
@@ -181,6 +184,7 @@ export function TaskDetailDrawer({
           </FieldBlock>
           <FieldBlock label="Due date">
             <Input
+              aria-label="Task due date"
               type="datetime-local"
               disabled={!canEdit}
               value={task.due_at ? toLocalInputValue(task.due_at) : ""}

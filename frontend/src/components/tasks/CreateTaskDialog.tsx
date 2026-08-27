@@ -31,7 +31,7 @@ export function CreateTaskDialog({
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    if (!title.trim()) return;
+    if (!title.trim() || createTask.isPending) return;
     try {
       const task = await createTask.mutateAsync({
         title: title.trim(),
@@ -39,6 +39,10 @@ export function CreateTaskDialog({
         priority,
         due_at: dueAt ? new Date(dueAt).toISOString() : null,
       });
+      setTitle("");
+      setAssigneeId("");
+      setPriority("medium");
+      setDueAt("");
       onCreated(task.id);
     } catch (error) {
       toast({

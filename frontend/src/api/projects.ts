@@ -208,6 +208,7 @@ export type TaskUpdateInput = Partial<
     "title" | "description" | "status" | "priority" | "assignee_id" | "due_at" | "parent_task_id"
   >
 >;
+export type TaskCoreUpdateInput = Pick<TaskUpdateInput, "status" | "priority" | "assignee_id" | "due_at">;
 
 export function updateTask(
   token: string,
