@@ -1,7 +1,5 @@
-const WS_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000").replace(
-  /^http/,
-  "ws",
-);
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
+const WS_BASE_URL = API_BASE_URL.replace(/^http/, "ws");
 
 const MAX_RECONNECT_DELAY_MS = 15_000;
 const MAX_SEEN_EVENT_IDS = 500;
@@ -48,6 +46,10 @@ type SubscribeMessage = {
 type ActiveSubscription = {
   message: SubscribeMessage;
   subscribers: number;
+};
+type WebSocketTicketResponse = {
+  ticket: string;
+  expires_at: string;
 };
 
 /**
@@ -156,7 +158,28 @@ export class RealtimeClient {
 
   private open(): void {
     this.setStatus("connecting");
-    const socket = new WebSocket(`${WS_BASE_URL}/ws?token=${encodeURIComponent(this.token)}`);
+    void this.openWithTicket();
+  }
+
+  private async openWithTicket(): Promise<void> {
+    let ticket: string;
+    try {
+      ticket = await requestWebSocketTicket(this.token);
+    } catch {
+      if (this.closedByCaller) {
+        return;
+      }
+      this.setStatus("disconnected");
+      if (!this.closedByCaller) {
+        this.scheduleReconnect();
+      }
+      return;
+    }
+    if (this.closedByCaller) {
+      return;
+    }
+
+    const socket = new WebSocket(`${WS_BASE_URL}/ws?ticket=${encodeURIComponent(ticket)}`);
     this.socket = socket;
 
     socket.onopen = () => {
@@ -254,4 +277,18 @@ export class RealtimeClient {
 
 function subscriptionKey(scope: string, workspaceId: string, projectId?: string): string {
   return projectId ? `${scope}:${workspaceId}:${projectId}` : `${scope}:${workspaceId}`;
+}
+
+async function requestWebSocketTicket(token: string): Promise<string> {
+  const response = await fetch(`${API_BASE_URL}/auth/ws-ticket`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  if (!response.ok) {
+    throw new Error("Unable to create realtime ticket");
+  }
+  const body = (await response.json()) as WebSocketTicketResponse;
+  return body.ticket;
 }

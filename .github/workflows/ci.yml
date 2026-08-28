@@ -9,6 +9,20 @@ jobs:
   backend:
     name: Backend (ruff, mypy, pytest)
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: taskflow_ci
+          POSTGRES_USER: taskflow
+          POSTGRES_PASSWORD: taskflow_ci_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U taskflow -d taskflow_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     defaults:
       run:
         working-directory: backend
@@ -22,13 +36,26 @@ jobs:
           cache-dependency-path: backend/pyproject.toml
 
       - name: Install backend dependencies
-        run: pip install -e ".[dev]"
+        run: |
+          python -m pip install --upgrade "pip>=26.2.1"
+          pip install -e ".[dev]"
+
+      - name: Backend dependency audit
+        run: |
+          python -m pip install pip-audit
+          pip-audit
 
       - name: Ruff lint
         run: ruff check .
 
       - name: Mypy type check
         run: mypy app tests
+
+      - name: Migration validation
+        env:
+          DATABASE_URL: postgresql+psycopg://taskflow:taskflow_ci_password@localhost:5432/taskflow_ci
+          JWT_SECRET_KEY: ci-secret-with-at-least-thirty-two-characters
+        run: alembic upgrade head
 
       - name: Pytest
         run: pytest
@@ -50,6 +77,9 @@ jobs:
 
       - name: Install frontend dependencies
         run: npm ci
+
+      - name: Frontend dependency audit
+        run: npm audit --audit-level=high
 
       - name: Type check
         run: npx tsc --noEmit

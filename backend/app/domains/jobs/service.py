@@ -95,6 +95,27 @@ def fail_job_run(db: Session, job_run_id: uuid.UUID, *, error: str) -> None:
     db.commit()
 
 
+def fail_stale_running_jobs(
+    db: Session, *, timeout_minutes: int, now: datetime | None = None
+) -> int:
+    reference = now or utc_now()
+    cutoff = reference - timedelta(minutes=timeout_minutes)
+    stale_runs = list(
+        db.scalars(
+            select(JobRun).where(
+                JobRun.status == JobRunStatus.running,
+                JobRun.started_at < cutoff,
+            )
+        )
+    )
+    for job_run in stale_runs:
+        job_run.status = JobRunStatus.failed
+        job_run.finished_at = reference
+        job_run.error = "Marked failed after exceeding stale running-job timeout"
+    db.commit()
+    return len(stale_runs)
+
+
 # --- Scheduled job logic (pure domain functions, no Celery) --------------------
 #
 # Every job below is safe to retry: it only ever *reads* candidates and then

@@ -11,6 +11,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from app.core.rate_limit import RateLimitResult, RateLimitRule, set_rate_limiter
 from app.core.settings import get_settings
 from app.db.base import Base
 from app.db.session import get_db
@@ -30,6 +31,21 @@ from app.domains.workspaces.models import Workspace, WorkspaceMember  # noqa: F4
 from app.main import app
 from app.realtime.broker import InMemoryBroker, reset_broker, set_broker
 from app.realtime.connection_manager import connection_manager
+
+
+class InMemoryRateLimiter:
+    def __init__(self) -> None:
+        self.counts: dict[tuple[str, str], int] = {}
+
+    def check(self, rule: RateLimitRule, identifier: str) -> RateLimitResult:
+        key = (rule.name, identifier)
+        count = self.counts.get(key, 0) + 1
+        self.counts[key] = count
+        return RateLimitResult(
+            allowed=count <= rule.max_attempts,
+            retry_after_seconds=rule.window_seconds,
+            remaining=max(rule.max_attempts - count, 0),
+        )
 
 
 @pytest.fixture()
@@ -53,9 +69,11 @@ def client(db_session: Session) -> Generator[TestClient]:
     app.dependency_overrides[get_db] = override_get_db
     get_settings.cache_clear()
     set_broker(InMemoryBroker())
+    set_rate_limiter(InMemoryRateLimiter())
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
     get_settings.cache_clear()
     reset_broker()
+    set_rate_limiter(None)
     connection_manager.reset()

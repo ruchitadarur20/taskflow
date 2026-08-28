@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.domains.auth.models import User
@@ -62,6 +63,10 @@ class InvalidDependencyError(ProjectError):
 
 
 class DuplicateDependencyError(ProjectError):
+    pass
+
+
+class DuplicateProjectError(ProjectError):
     pass
 
 
@@ -185,7 +190,11 @@ def create_project(
         event_type="project.created",
         metadata={"name": project.name},
     )
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise DuplicateProjectError from None
     db.refresh(project)
     return project
 
@@ -549,7 +558,11 @@ def add_dependency(
         event_type="task.dependency_added",
         metadata={"blocking_task_id": str(blocking_task_id)},
     )
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise DuplicateDependencyError from None
     return dependency
 
 
@@ -591,7 +604,11 @@ def create_label(
         updated_at=now,
     )
     db.add(label)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise DuplicateLabelError from None
     db.refresh(label)
     return label
 
@@ -636,7 +653,12 @@ def add_label_to_task(
             event_type="task.label_added",
             metadata={"label_id": str(label.id)},
         )
-        db.commit()
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            if db.get(TaskLabel, (task.id, label.id)) is None:
+                raise
     return list_task_labels(db, workspace_id, project_id, task_id, actor)
 
 

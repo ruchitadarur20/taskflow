@@ -82,3 +82,26 @@ def _dispose_db_engine_on_fork(**kwargs: object) -> None:
     from app.db.session import engine
 
     engine.dispose()
+    _mark_stale_running_jobs()
+
+
+def _mark_stale_running_jobs() -> None:
+    from app.db.session import SessionLocal
+    from app.domains.jobs.service import fail_stale_running_jobs
+
+    settings = get_settings()
+    with SessionLocal() as db:
+        stale_count = fail_stale_running_jobs(
+            db, timeout_minutes=settings.stale_job_timeout_minutes
+        )
+    if stale_count:
+        import logging
+
+        logging.getLogger("app.workers").warning(
+            "stale job runs marked failed",
+            extra={
+                "component": "worker",
+                "event": "job_runs.stale_failed",
+                "result": {"stale_count": stale_count},
+            },
+        )

@@ -6,9 +6,17 @@ import sys
 from typing import Any
 
 # Fields a log call may pass via `extra={...}` that we want surfaced as their
-# own JSON keys rather than folded into the free-text message. Kept narrow and
-# job-focused per Milestone 7 scope (no general request-logging rework here).
+# own JSON keys rather than folded into the free-text message. Shared by the API
+# request logger and Celery workers so operational logs keep one shape.
 _STRUCTURED_FIELDS = (
+    "component",
+    "event",
+    "request_id",
+    "http_method",
+    "http_path",
+    "http_route",
+    "status_code",
+    "duration_ms",
     "task_name",
     "task_id",
     "idempotency_key",

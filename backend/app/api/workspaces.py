@@ -50,6 +50,10 @@ def translate_workspace_error(error: service.WorkspaceError) -> HTTPException:
         return HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="Membership already exists"
         )
+    if isinstance(error, service.DuplicateWorkspaceError):
+        return HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Workspace already exists"
+        )
     if isinstance(error, service.FinalOwnerError):
         return HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -66,7 +70,10 @@ def create_workspace(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> WorkspaceRead:
-    workspace = service.create_workspace(db, current_user, payload.name)
+    try:
+        workspace = service.create_workspace(db, current_user, payload.name)
+    except service.WorkspaceError as error:
+        raise translate_workspace_error(error) from None
     return workspace_response(workspace, WorkspaceRole.owner)
 
 

@@ -43,19 +43,42 @@ beforeEach(() => {
   CapturingWebSocket.instances = [];
   // @ts-expect-error test-only global shim
   globalThis.WebSocket = CapturingWebSocket;
+  globalThis.fetch = vi.fn(async () =>
+    ({
+      ok: true,
+      json: async () => ({
+        ticket: `ticket-${CapturingWebSocket.instances.length + 1}`,
+        expires_at: new Date(Date.now() + 60_000).toISOString(),
+      }),
+    }) as Response,
+  ) as typeof fetch;
 });
 
-function connectedClient(): { client: RealtimeClient; socket: CapturingWebSocket } {
+async function connectedClient(): Promise<{ client: RealtimeClient; socket: CapturingWebSocket }> {
   const client = new RealtimeClient("test-token");
   client.connect();
+  await flushConnectionSetup();
   const socket = CapturingWebSocket.instances[0];
   socket.emitOpen();
   return { client, socket };
 }
 
 describe("RealtimeClient", () => {
-  it("delivers a realtime event to subscribed listeners", () => {
-    const { client, socket } = connectedClient();
+  it("connects with one-time websocket tickets instead of access tokens", async () => {
+    const { socket } = await connectedClient();
+
+    expect(fetch).toHaveBeenCalledWith("http://localhost:8000/auth/ws-ticket", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer test-token",
+      },
+    });
+    expect(socket.url).toBe("ws://localhost:8000/ws?ticket=ticket-1");
+    expect(socket.url).not.toContain("test-token");
+  });
+
+  it("delivers a realtime event to subscribed listeners", async () => {
+    const { client, socket } = await connectedClient();
     const listener = vi.fn();
     client.onEvent(listener);
 
@@ -74,8 +97,8 @@ describe("RealtimeClient", () => {
     expect(listener).toHaveBeenCalledTimes(1);
   });
 
-  it("deduplicates a redelivered event by event_id", () => {
-    const { client, socket } = connectedClient();
+  it("deduplicates a redelivered event by event_id", async () => {
+    const { client, socket } = await connectedClient();
     const listener = vi.fn();
     client.onEvent(listener);
 
@@ -97,8 +120,8 @@ describe("RealtimeClient", () => {
     expect(listener).toHaveBeenCalledTimes(1);
   });
 
-  it("resends active subscriptions after every connected ack (covers reconnect)", () => {
-    const { client, socket } = connectedClient();
+  it("resends active subscriptions after every connected ack (covers reconnect)", async () => {
+    const { client, socket } = await connectedClient();
     client.subscribeWorkspace("workspace-1");
     socket.sent = [];
 
@@ -115,9 +138,9 @@ describe("RealtimeClient", () => {
     });
   });
 
-  it("reports disconnect and restores active subscriptions on reconnect", () => {
+  it("reports disconnect and restores active subscriptions on reconnect", async () => {
     vi.useFakeTimers();
-    const { client, socket } = connectedClient();
+    const { client, socket } = await connectedClient();
     const statuses: string[] = [];
     client.onStatusChange((status) => statuses.push(status));
     client.subscribeWorkspace("workspace-1");
@@ -129,9 +152,12 @@ describe("RealtimeClient", () => {
     expect(CapturingWebSocket.instances).toHaveLength(1);
 
     vi.advanceTimersByTime(1000);
+    await flushConnectionSetup();
     const reconnectSocket = CapturingWebSocket.instances[1];
     reconnectSocket.emitOpen();
 
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(reconnectSocket.url).toBe("ws://localhost:8000/ws?ticket=ticket-2");
     expect(statuses).toContain("connected");
     expect(reconnectSocket.sent.map((raw) => JSON.parse(raw))).toEqual(
       expect.arrayContaining([
@@ -153,8 +179,8 @@ describe("RealtimeClient", () => {
     vi.useRealTimers();
   });
 
-  it("does not restore a workspace subscription after it is unsubscribed", () => {
-    const { client, socket } = connectedClient();
+  it("does not restore a workspace subscription after it is unsubscribed", async () => {
+    const { client, socket } = await connectedClient();
     client.subscribeWorkspace("workspace-1");
     client.unsubscribeWorkspace("workspace-1");
     socket.sent = [];
@@ -168,8 +194,8 @@ describe("RealtimeClient", () => {
     });
   });
 
-  it("keeps duplicate workspace subscriptions active until every subscriber unsubscribes", () => {
-    const { client, socket } = connectedClient();
+  it("keeps duplicate workspace subscriptions active until every subscriber unsubscribes", async () => {
+    const { client, socket } = await connectedClient();
     client.subscribeWorkspace("workspace-1");
     client.subscribeWorkspace("workspace-1");
 
@@ -199,8 +225,8 @@ describe("RealtimeClient", () => {
     });
   });
 
-  it("stops delivering events after disconnect", () => {
-    const { client, socket } = connectedClient();
+  it("stops delivering events after disconnect", async () => {
+    const { client, socket } = await connectedClient();
     const listener = vi.fn();
     client.onEvent(listener);
     client.disconnect();
@@ -220,3 +246,10 @@ describe("RealtimeClient", () => {
     expect(listener).not.toHaveBeenCalled();
   });
 });
+
+async function flushConnectionSetup(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+}

@@ -1,14 +1,17 @@
 from __future__ import annotations
 
+import asyncio
 import uuid
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime
+from typing import Any, cast
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 from starlette.websockets import WebSocketDisconnect
 
-from app.realtime.broker import RealtimeBroker, reset_broker, set_broker
+from app.realtime.broker import RealtimeBroker, RedisBroker, reset_broker, set_broker
 from app.realtime.channels import project_channel, user_channel, workspace_channel
 from app.realtime.events import queue_workspace_event
 
@@ -118,6 +121,47 @@ def test_ws_accepts_valid_token_and_acks_connection(client: TestClient) -> None:
     with client.websocket_connect(f"/ws?token={token_of(owner)}") as ws:
         hello = ws.receive_json()
         assert hello == {"type": "connected", "user_id": user_id(owner)}
+
+
+def test_ws_ticket_endpoint_issues_one_time_ticket(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    owner = register(client, "owner@example.com")
+
+    def issue_ticket(user_uuid: uuid.UUID, settings: object) -> tuple[str, datetime]:
+        assert str(user_uuid) == user_id(owner)
+        return "ticket-" + "x" * 40, datetime(2026, 1, 1, tzinfo=UTC)
+
+    monkeypatch.setattr("app.api.auth.issue_websocket_ticket", issue_ticket)
+
+    response = client.post("/auth/ws-ticket", headers=auth_header(owner))
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "ticket": "ticket-" + "x" * 40,
+        "expires_at": "2026-01-01T00:00:00Z",
+    }
+
+
+def test_ws_accepts_ticket_once_and_rejects_replay(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    owner = register(client, "owner@example.com")
+    tickets = {"ticket-once": uuid.UUID(user_id(owner))}
+
+    def consume_ticket(ticket: str, settings: object) -> uuid.UUID | None:
+        return tickets.pop(ticket, None)
+
+    monkeypatch.setattr("app.api.realtime.consume_websocket_ticket", consume_ticket)
+
+    with client.websocket_connect("/ws?ticket=ticket-once") as ws:
+        assert ws.receive_json() == {"type": "connected", "user_id": user_id(owner)}
+
+    with pytest.raises(WebSocketDisconnect) as exc_info:
+        with client.websocket_connect("/ws?ticket=ticket-once"):
+            pass
+
+    assert exc_info.value.code == 4401
 
 
 # --- Subscription authorization ------------------------------------------------
@@ -441,3 +485,68 @@ def test_queue_workspace_event_skips_unknown_activity_types(db_session: Session)
 def test_user_channel_helper_matches_notification_delivery_channel() -> None:
     some_id = uuid.uuid4()
     assert user_channel(some_id) == f"taskflow:user:{some_id}"
+
+
+def test_redis_broker_reconnects_after_listener_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def no_sleep(delay: float) -> None:
+        assert delay >= 1
+
+    monkeypatch.setattr("app.realtime.broker.asyncio.sleep", no_sleep)
+
+    class FlakyBroker(RedisBroker):
+        def __init__(self) -> None:
+            super().__init__("redis://example.invalid/0")
+            self.connect_count = 0
+            self.listen_count = 0
+
+        async def _connect(self) -> None:
+            self.connect_count += 1
+            self._pubsub = object()  # type: ignore[assignment]
+
+        async def _close_subscriber(self) -> None:
+            return None
+
+        async def _listen(self, pubsub: object) -> None:
+            self.listen_count += 1
+            if self.listen_count == 1:
+                raise RuntimeError("redis connection dropped")
+            self._stopping = True
+
+    async def run() -> FlakyBroker:
+        broker = FlakyBroker()
+        await broker._listen_forever()
+        return broker
+
+    broker = asyncio.run(run())
+
+    assert broker.connect_count == 2
+    assert broker.listen_count == 2
+
+
+def test_redis_broker_skips_malformed_pubsub_messages() -> None:
+    class RecordingManager:
+        def __init__(self) -> None:
+            self.dispatched: list[tuple[str, str]] = []
+
+        async def dispatch(self, channel: str, message: str) -> None:
+            self.dispatched.append((channel, message))
+
+    class FakePubSub:
+        def listen(self) -> AsyncIterator[dict[str, object]]:
+            async def messages() -> AsyncIterator[dict[str, object]]:
+                yield {"type": "pmessage", "data": "{}"}
+                yield {"type": "pmessage", "channel": b"taskflow:workspace:1", "data": b"ok"}
+
+            return messages()
+
+    async def run() -> RecordingManager:
+        manager = RecordingManager()
+        broker = RedisBroker("redis://example.invalid/0", manager=cast(Any, manager))
+        await broker._listen(cast(Any, FakePubSub()))
+        return manager
+
+    manager = asyncio.run(run())
+
+    assert manager.dispatched == [("taskflow:workspace:1", "ok")]

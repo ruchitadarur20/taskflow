@@ -34,13 +34,16 @@ phantom realtime event.
 
 ## Authentication
 
-WebSocket connections authenticate with the same JWT access token used by the
-REST API. Browsers cannot set an `Authorization` header on a WebSocket
-handshake, so the token is passed as a query parameter: `/ws?token=<access
-token>`. The server decodes it with the same `decode_access_token` function
-`get_current_user` uses, and rejects a missing or invalid token by closing the
-connection (code `4401`) before `accept()` - the socket is never opened for an
-unauthenticated caller.
+The browser first requests a short-lived, one-time ticket from
+`POST /auth/ws-ticket` using its normal REST bearer token. The ticket is stored
+only as a hashed Redis key with a quick expiry, consumed during
+`/ws?ticket=<ticket>`, and rejected on replay. This avoids sending the access
+token in the WebSocket URL during normal app use.
+
+The server still accepts `/ws?token=<access token>` as a compatibility fallback.
+Both paths resolve to the same active-user check, and a missing, expired,
+invalid, or replayed credential closes the connection (code `4401`) before
+`accept()` - the socket is never opened for an unauthenticated caller.
 
 ## Subscription Model
 
@@ -172,9 +175,11 @@ a bespoke check.
 `src/realtime/client.ts` exports `RealtimeClient`: one WebSocket per session,
 constructed with the current access token.
 
-- **Connect**: opens `wss://.../ws?token=<accessToken>`.
+- **Connect**: requests `POST /auth/ws-ticket`, then opens
+  `wss://.../ws?ticket=<oneTimeTicket>`.
 - **Reconnect**: on an unexpected close, reconnects with exponential backoff
-  (1s, 2s, 4s, ... capped at 15s), reset on a successful `open`.
+  (1s, 2s, 4s, ... capped at 15s), requesting a fresh ticket each time and
+  resetting backoff on a successful `open`.
 - **Resubscribe**: every active subscription is tracked client-side and
   resent as soon as the server's `"connected"` ack arrives - covering both the
   first connection and every reconnect, with no special-casing needed at call
@@ -203,7 +208,7 @@ to:
 
 ## Failure and Reconnect Strategy
 
-- An invalid/expired/missing token closes the WebSocket at handshake time;
+- An invalid/expired/missing ticket or token closes the WebSocket at handshake time;
   the frontend's reconnect loop will keep retrying with backoff, which is
   appropriate since a token can become valid again after a session refresh
   updates `AuthShell`'s stored session and recreates the client.

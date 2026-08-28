@@ -4,6 +4,7 @@ import re
 import uuid
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.domains.auth.models import User
@@ -39,6 +40,10 @@ class UserNotFoundError(WorkspaceError):
 
 
 class DuplicateMembershipError(WorkspaceError):
+    pass
+
+
+class DuplicateWorkspaceError(WorkspaceError):
     pass
 
 
@@ -131,7 +136,11 @@ def create_workspace(db: Session, user: User, name: str) -> Workspace:
             updated_at=now,
         )
     )
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise DuplicateWorkspaceError from None
     db.refresh(workspace)
     return workspace
 
@@ -224,7 +233,11 @@ def add_member(
         updated_at=now,
     )
     db.add(member)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise DuplicateMembershipError from None
     db.refresh(member)
     return member
 

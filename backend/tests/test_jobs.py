@@ -181,6 +181,36 @@ def test_fail_job_run_records_error_and_status(db_session: Session) -> None:
     assert stored.finished_at is not None
 
 
+def test_fail_stale_running_jobs_marks_only_expired_runs_failed(db_session: Session) -> None:
+    now = datetime(2026, 9, 1, 12, 0, tzinfo=UTC)
+    stale = JobRun(
+        task_name="demo",
+        idempotency_key="stale",
+        celery_task_id="a",
+        status=JobRunStatus.running,
+        attempt=1,
+        started_at=now - timedelta(minutes=121),
+    )
+    fresh = JobRun(
+        task_name="demo",
+        idempotency_key="fresh",
+        celery_task_id="b",
+        status=JobRunStatus.running,
+        attempt=1,
+        started_at=now - timedelta(minutes=30),
+    )
+    db_session.add_all([stale, fresh])
+    db_session.commit()
+
+    marked = jobs_service.fail_stale_running_jobs(db_session, timeout_minutes=120, now=now)
+
+    assert marked == 1
+    assert stale.status == JobRunStatus.failed
+    assert stale.finished_at == now.replace(tzinfo=None)
+    assert stale.error == "Marked failed after exceeding stale running-job timeout"
+    assert fresh.status == JobRunStatus.running
+
+
 # --- detect_overdue_tasks --------------------------------------------------
 
 

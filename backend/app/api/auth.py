@@ -6,6 +6,13 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user
+from app.core.rate_limit import (
+    enforce_http_rate_limit,
+    login_rule,
+    refresh_rule,
+    register_rule,
+    websocket_rule,
+)
 from app.core.settings import Settings, get_settings
 from app.db.session import get_db
 from app.domains.auth import service
@@ -18,7 +25,9 @@ from app.domains.auth.schemas import (
     RefreshRequest,
     RegisterRequest,
     UserRead,
+    WebSocketTicketResponse,
 )
+from app.domains.auth.ws_tickets import WebSocketTicketError, issue_websocket_ticket
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -36,6 +45,7 @@ def register(
     db: Annotated[Session, Depends(get_db)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> AuthTokenResponse:
+    enforce_http_rate_limit(request, register_rule(settings))
     try:
         access_token, refresh_token, access_expires_at, user = service.register(
             db,
@@ -65,6 +75,7 @@ def login(
     db: Annotated[Session, Depends(get_db)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> AuthTokenResponse:
+    enforce_http_rate_limit(request, login_rule(settings))
     try:
         access_token, refresh_token, access_expires_at, user = service.login(
             db,
@@ -93,6 +104,7 @@ def refresh(
     db: Annotated[Session, Depends(get_db)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> AuthTokenResponse:
+    enforce_http_rate_limit(request, refresh_rule(settings))
     try:
         access_token, refresh_token, access_expires_at, user = service.refresh(
             db,
@@ -126,3 +138,20 @@ def logout(payload: LogoutRequest, db: Annotated[Session, Depends(get_db)]) -> L
 @router.get("/me", response_model=UserRead)
 def me(current_user: Annotated[User, Depends(get_current_user)]) -> User:
     return current_user
+
+
+@router.post("/ws-ticket", response_model=WebSocketTicketResponse)
+def websocket_ticket(
+    request: Request,
+    current_user: Annotated[User, Depends(get_current_user)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> WebSocketTicketResponse:
+    enforce_http_rate_limit(request, websocket_rule(settings))
+    try:
+        ticket, expires_at = issue_websocket_ticket(current_user.id, settings)
+    except WebSocketTicketError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Realtime authentication is temporarily unavailable",
+        ) from None
+    return WebSocketTicketResponse(ticket=ticket, expires_at=expires_at)

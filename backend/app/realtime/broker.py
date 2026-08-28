@@ -43,6 +43,7 @@ class RedisBroker:
         self._async_client: redis_asyncio.Redis | None = None
         self._pubsub: redis_asyncio.client.PubSub | None = None
         self._listen_task: asyncio.Task[None] | None = None
+        self._stopping = False
 
     def publish(self, channel: str, message: str) -> None:
         try:
@@ -53,29 +54,56 @@ class RedisBroker:
             logger.warning("Realtime publish to Redis failed for channel %s", channel)
 
     async def start(self) -> None:
+        if self._listen_task is not None and not self._listen_task.done():
+            return
+        self._stopping = False
+        self._listen_task = asyncio.create_task(self._listen_forever())
+
+    async def _listen_forever(self) -> None:
+        backoff = 1.0
+        while not self._stopping:
+            try:
+                await self._connect()
+                assert self._pubsub is not None
+                backoff = 1.0
+                await self._listen(self._pubsub)
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # noqa: BLE001 - reconnect loop keeps realtime fanout alive
+                logger.exception(
+                    "Realtime Redis listener stopped unexpectedly; reconnecting",
+                    extra={"component": "realtime", "event": "redis_listener.reconnect"},
+                )
+                await self._close_subscriber()
+                await asyncio.sleep(backoff)
+                backoff = min(backoff * 2, 30.0)
+
+    async def _connect(self) -> None:
+        await self._close_subscriber()
         self._async_client = redis_asyncio.Redis.from_url(self._redis_url)
         self._pubsub = self._async_client.pubsub()
         await self._pubsub.psubscribe("taskflow:*")
-        self._listen_task = asyncio.create_task(self._listen(self._pubsub))
 
     async def _listen(self, pubsub: redis_asyncio.client.PubSub) -> None:
-        try:
-            async for message in pubsub.listen():
-                if message.get("type") != "pmessage":
-                    continue
-                channel = message["channel"]
-                if isinstance(channel, bytes):
-                    channel = channel.decode("utf-8")
-                data = message["data"]
-                if isinstance(data, bytes):
-                    data = data.decode("utf-8")
-                await self._manager.dispatch(channel, data)
-        except asyncio.CancelledError:
-            raise
-        except Exception:  # noqa: BLE001 - keep the app alive if Redis drops
-            logger.exception("Realtime Redis listener stopped unexpectedly")
+        async for message in pubsub.listen():
+            if message.get("type") != "pmessage":
+                continue
+            channel = message.get("channel")
+            data = message.get("data")
+            if not isinstance(channel, (bytes, str)) or not isinstance(data, (bytes, str)):
+                logger.warning(
+                    "Realtime Redis listener received malformed message",
+                    extra={"component": "realtime", "event": "redis_listener.malformed_message"},
+                )
+                continue
+            if isinstance(channel, bytes):
+                channel = channel.decode("utf-8")
+            if isinstance(data, bytes):
+                data = data.decode("utf-8")
+            await self._manager.dispatch(channel, data)
 
     async def stop(self) -> None:
+        self._stopping = True
         if self._listen_task is not None:
             self._listen_task.cancel()
             try:
@@ -83,6 +111,15 @@ class RedisBroker:
             except (asyncio.CancelledError, Exception):  # noqa: BLE001
                 pass
             self._listen_task = None
+        await self._close_subscriber()
+        if self._publish_client is not None:
+            try:
+                self._publish_client.close()
+            except Exception:  # noqa: BLE001
+                pass
+            self._publish_client = None
+
+    async def _close_subscriber(self) -> None:
         if self._pubsub is not None:
             try:
                 await self._pubsub.aclose()  # type: ignore[no-untyped-call]
@@ -95,12 +132,6 @@ class RedisBroker:
             except Exception:  # noqa: BLE001
                 pass
             self._async_client = None
-        if self._publish_client is not None:
-            try:
-                self._publish_client.close()
-            except Exception:  # noqa: BLE001
-                pass
-            self._publish_client = None
 
 
 class InMemoryBroker:

@@ -59,3 +59,8 @@ class AuthTokenResponse(BaseModel):
 
 class LogoutResponse(BaseModel):
     detail: str
+
+
+class WebSocketTicketResponse(BaseModel):
+    ticket: str
+    expires_at: datetime

@@ -78,6 +78,8 @@ def translate_project_error(
         return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resource not found")
     if isinstance(error, service.ProjectArchivedError):
         return HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Project is archived")
+    if isinstance(error, service.DuplicateProjectError):
+        return HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Project already exists")
     if isinstance(error, service.InvalidAssignmentError):
         return HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid assignee"

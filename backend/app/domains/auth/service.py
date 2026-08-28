@@ -4,6 +4,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import delete, func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.settings import Settings
@@ -65,7 +66,11 @@ def create_user(db: Session, email: str, password: str, display_name: str) -> Us
         updated_at=now,
     )
     db.add(user)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise DuplicateUserError from None
     db.refresh(user)
     return user
 

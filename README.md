@@ -64,6 +64,7 @@ Out of scope for the first implementation phase:
 - [Background Jobs](docs/background-jobs.md)
 - [Frontend](docs/frontend.md)
 - [Database Design](docs/database.md)
+- [Security](docs/security.md)
 - [Data Model, Auth, RBAC, and API Modules](docs/domain-and-api.md)
 - [Frontend, WebSockets, and Background Jobs](docs/frontend-realtime-jobs.md)
 - [Testing, Docker, CI/CD, Security, and Observability](docs/quality-and-operations.md)
@@ -71,5 +72,4 @@ Out of scope for the first implementation phase:
 
 ## Milestone Status
 
-Complete through Milestone 7. Milestone 8 is in progress, with Milestone 8A (Application Shell &
-Navigation) currently being stabilized.
+Complete through Milestone 8. Milestone 9 hardening is in progress.
